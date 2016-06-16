@@ -5,7 +5,7 @@ from copy import deepcopy
 	Will attempt to normalize given lambda terms for NNST. 
 	
 	Syntax:
-		Lambdas are to be written as (Lx.M)    		['L', variable, expr]
+		Lambdas are to be written as (Lx.M)    	['L', variable, expr]
 		Application 							['A', expr, expr]
 		
 		Universal Quantification as U    		['U', L-var, expr]
@@ -35,6 +35,8 @@ from copy import deepcopy
 	var :: 'a'...'z'
 	expr :: var | '(' expr expr ')' | '(' lam var . expr ')'
 """
+
+var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
 
 expr = Forward()
 
@@ -73,29 +75,64 @@ def unparse(parsed_expr):
 	return expr_string
 #print(' '.join(expr.parseString('(ab)').asList()[0]))
 
-#Lambda Reduction: ['A', ['L', var, expr0], expr1]
-#Reduces to: expr1 subbed for all occurrences of var in expr0	
-#Algorithm: traverse expr0 and find all occurrences of var and replace with expr1
+# Lambda Reduction: ['A', ['L', var, expr0], expr1]
+# Reduces to: expr1 subbed for all occurrences of var in expr0	
+# Algorithm: traverse expr0 and find all occurrences of var and replace with expr1
 def check_lambda_reduction(parsed_expr):
 	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'L':
 		return True
-
-# Takes in the full parsed expression list at index 0	
-# Will perform a single reduction step at the first reduction it finds
-def step_reduce(parsed_expr):
-	'''Check to see if a reduction can be performed at the current level
-		If so, do it 
-		Return reduced expr as parsed list'''
-	result = []
-	
-	if check_lambda_reduction(parsed_expr):
-		var = parsed_expr[1][1]
-		primary_expr = parsed_expr[1][2]
-		secondary_expr = parsed_expr[2]
-		result = substitute(var, primary_expr, secondary_expr)
-	
-	return result
-
+	else:
+		return False
+		
+# Universal:	['A', ['U', _, _], L-var]
+def check_universal_reduction(parsed_expr):
+	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'U':
+		return True
+	else:
+		return False
+		
+# Conjunction:	['A', ['P', _, _], ['Pi0']]
+def check_conjunction0_reduction(parsed_expr):
+	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'P' and parsed_expr[2][0] == 'Pi0':
+		return True
+	else:
+		return False
+		
+# Conjunction:	['A', ['P', _, _], ['Pi1']]
+def check_conjunction1_reduction(parsed_expr):
+	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'P' and parsed_expr[2][0] == 'Pi1':
+		return True
+	else:
+		return False
+		
+# Disjunction: 	['A', ['I0', expr], ['DE', expr, expr, expr, expr]]
+def check_disjunction0_reduction(parsed_expr):
+	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'I0' and parsed_expr[2][0] == 'DE':
+		return True
+	else:
+		return False
+		
+# Disjunction: 	['A', ['I1', expr], ['DE', expr, expr, expr, expr]]
+def check_disjunction1_reduction(parsed_expr):
+	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'I1' and parsed_expr[2][0] == 'DE':
+		return True
+	else:
+		return False
+		
+# Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
+def check_existential_reduction(parsed_expr):
+	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'EI' and parsed_expr[2][0] == 'EE':
+		return True
+	else:
+		return False
+		
+# Membership: 	['out', ['in', expr]]
+def check_membership_reduction(parsed_expr):
+	if parsed_expr[0] == 'out' and parsed_expr[1][0] == 'in':
+		return True
+	else:
+		return False
+		
 # Traverse the parsed expression and find a reduction
 # Can't guarantee much about what order this algorithm proceeds, 
 # but it will find all reductions
@@ -103,7 +140,7 @@ def find_reduction(parsed_expr):
 	"""If you find reduction at the top level, do that one.
 	Else go looking until you find one in a subtree, or reach a var."""
 	result = []
-	if isinstance(parsed_expr, str):
+	if parsed_expr in var_list:
 		return parsed_expr
 	elif check_lambda_reduction(parsed_expr):
 		var = parsed_expr[1][1]
@@ -111,6 +148,29 @@ def find_reduction(parsed_expr):
 		secondary_expr = parsed_expr[2]
 		result = substitute(var, primary_expr, secondary_expr)		
 		return result
+	elif check_conjunction0_reduction(parsed_expr):
+		#Conjunction:	['A', ['P', _, _], ['Pi0']]
+		result = parsed_expr[1][1]
+		return result
+	elif check_conjunction1_reduction(parsed_expr):
+		#Conjunction:	['A', ['P', _, _], ['Pi1']]
+		result = parsed_expr[1][2]
+		return result
+	elif check_disjunction0_reduction(parsed_expr):
+		#Disjunction: 	['A', ['I0', expr], ['DE', expr, expr, expr, expr]]
+		pass
+	elif check_disjunction1_reduction(parsed_expr):
+		#Disjunction: 	['A', ['I1', expr], ['DE', expr, expr, expr, expr]]
+		pass
+	elif check_existential_reduction(parsed_expr):
+		#Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
+		pass
+	elif check_membership_reduction(parsed_expr):
+		#Membership: 	['out', ['in', expr]]
+		pass
+	elif check_universal_reduction(parsed_expr):
+		#Universal: 		['A', ['U', _, _], L-var]
+		pass
 	else: 
 		if parsed_expr[0] == 'A':
 			result = ['A', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
@@ -188,8 +248,8 @@ if __name__ == "__main__":
 	test_string = '((Lx.x)y)'
 	test_parse = expr.parseString(test_string)
 	print(test_parse)
-	reduction_result = step_reduce(test_parse[0].asList())
-	print(reduction_result)
+	#reduction_result = step_reduce(test_parse[0].asList())
+	#print(reduction_result)
 	reduction_result = find_reduction(test_parse[0].asList())
 	print(reduction_result)
 	print()
@@ -211,8 +271,8 @@ if __name__ == "__main__":
 	test_string_reduced = '(((Ly.y)(Ly.y))(cd))'
 	test_parse_reduced = expr.parseString(test_string_reduced)
 	print(test_parse_reduced)
-	reduction_result = step_reduce(test_parse[0].asList())
-	print(reduction_result)
+	#reduction_result = step_reduce(test_parse[0].asList())
+	#print(reduction_result)
 	normalize_result = normalize(test_parse[0].asList())
 	print(normalize_result)
 	print(unparse(reduction_result))
@@ -221,3 +281,21 @@ if __name__ == "__main__":
 
 	
 # Couldn't figure out how to make results names work.
+
+# <---------- Old Code ---------->
+
+# Takes in the full parsed expression list at index 0	
+# Will perform a single reduction step at the first reduction it finds
+def step_reduce(parsed_expr):
+	'''Check to see if a reduction can be performed at the current level
+		If so, do it 
+		Return reduced expr as parsed list'''
+	result = []
+	
+	if check_lambda_reduction(parsed_expr):
+		var = parsed_expr[1][1]
+		primary_expr = parsed_expr[1][2]
+		secondary_expr = parsed_expr[2]
+		result = substitute(var, primary_expr, secondary_expr)
+	
+	return result
