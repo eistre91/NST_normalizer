@@ -9,23 +9,23 @@ from copy import deepcopy
 		Application 							['A', expr, expr]
 		
 		Universal Quantification as U    		['U', L-var, expr]
-		Pairing as P< _, _ >    				['P', expr, expr]
+		Pairing as P( , )   				['P', expr, expr]
 		Pi0 or Pi1    							['Pi0'] | ['Pi1']
 		Iota as I0(u) or I1(u)					['I0', expr] | ['I1', expr]
-		Disjunction Elim as DE(x1.t1, x2.t2)	['DE', expr, expr, expr, expr]
+		Disjunction Elim as DE(x0.t0, x1.t1)	['DE', var, expr, var, expr]
 		Existential intro as EI(m, u) 			['EI', L-var, expr]		
-		Existential elim as EE((x,s).v)			['EE', L-var, expr, expr]
-		Membership as out(u) and in(u)			['out', expr] | ['in', expr]
-		Equality introduction as eq(_ ,_)		['eq', expr, expr]
-		Substitution as sub(_, _)				['sub', [expr, prop], [expr, equality]]
+		Existential elim as EE((x,s).v)			['EE', L-var, var(?), expr]
+		Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
+		Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
+		Substitution as SUB(_, _)				['SUB', [expr, prop], [expr, equality]]
 
 	Reduction Syntax:
 		Lambda: 		['A', ['L', _, _], expr]
 		Universal: 		['A', ['U', _, _], L-var]
 		Conjunction:	['A', ['P', _, _], ['Pi0']]
-		Disjunction: 	['A', ['I0', expr], ['DE', expr, expr, expr, expr]]
+		Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
 		Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
-		Membership: 	['out', ['in', expr]]
+		Membership: 	['OUT', ['IN', expr]]
 		Equality: 
 		
 		
@@ -37,16 +37,56 @@ from copy import deepcopy
 """
 
 var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
-
-expr = Forward()
-
-lam = Literal('L')
 var = oneOf("a b c d e f g h i j k l m n o p q r s t u v w x y z")
+
 lparen = Literal('(') #.suppress()
 rparen = Literal(')') #.suppress()
 lparens = Literal('(').suppress()
 rparens = Literal(')').suppress()
-dot = Literal(".")
+#langle = Literal('<').suppress()
+#rangle = Literal('>').suppress()
+comma = Literal(',').suppress()
+
+dot = Literal(".").suppress()
+colon = Literal(":").suppress()
+
+expr = Forward()
+
+lam = Literal('L')
+
+uni = Literal('U')
+
+pair = Literal('P')
+pi0 = Literal('Pi0')
+pi1 = Literal('Pi1')
+
+i0 = Literal('I0')
+i1 = Literal('I1')
+de = Literal('DE')
+
+ei = Literal('EI')
+ee = Literal('EE')
+
+mout = Literal('OUT')
+min = Literal('IN')
+
+eq = Literal('EQ')
+sub = Literal('SUB')
+
+# logical parsing
+# to suffice for the reduction rules for sub and eq, the cases to cover are
+# x not free in A
+# wedge
+# rightarrow
+# forall
+# t(x) \in {z | B(z, x)}
+# t \in x (x not free in t)
+# t(x) \in x (x free in t)
+# t(x) \in z
+# t(x) = u(x)
+# vee
+# exists
+
 
 #expr << var
 
@@ -54,9 +94,30 @@ dot = Literal(".")
 
 expr << ( \
 		var | \
-		Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \
-		lparens + Group( lam + var + dot.suppress() + expr ) + rparens
+		Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \ #(expr expr)
+		Group( lparens + lam + var + dot + expr + rparens ) | \ # (Lx.expr)
+		Group( lparens + uni + var + dot + expr + rparens ) | \ # (Ux.expr)
+		Group( pair + lparens + expr + comma + expr + rparens ) | \ #P(expr, expr)
+		Group( pi0 ) | \ #Pi0
+		Group( pi1 ) | \ 
+		Group( i0 + lparens + expr + rparens ) | \ #I0(expr)
+		Group( i1 + lparens + expr + rparens ) | \ 
+		Group( de + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \ #DE(x0.t0, x1.t1)
+		Group( ei + lparens + var + comma + expr + rparens ) |\ #EI(m, u)
+		Group( ee + lparens + lparens + var + comma + var + rparens + dot + expr + rparens ) |\ #EE((x, s).v)
+		Group( mout + lparens + expr + rparens ) |\ #OUT(u)
+		Group( min + lparens + expr + rparens ) |\ #IN(u)
+		Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) |\ #EQ(x1.t1, x2.t2)
+		Group( sub + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) #SUB(expr : logical_expr , expr : s = r)
 		)
+		
+
+Disjunction Elim as DE(x0.t0, x1.t1)	['DE', var, expr, var, expr]
+Existential intro as EI(m, u) 			['EI', L-var, expr]		
+Existential elim as EE((x,s).v)			['EE', L-var, var(?), expr]
+Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
+Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
+Substitution as SUB(_, _)				['SUB', [expr, prop], [expr, equality]]
 		
 #Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \
 
@@ -74,6 +135,26 @@ def unparse(parsed_expr):
 		expr_string = '(' + 'L' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ')'
 	return expr_string
 #print(' '.join(expr.parseString('(ab)').asList()[0]))
+
+# Traverse the parsed expression to find all instances of var
+# in primary expr to be replaced by secondary_expr
+def substitute(var, primary_expr, secondary_expr):
+	result = None
+	if primary_expr == var:
+		result = secondary_expr
+	elif isinstance(primary_expr, list):
+		result = deepcopy(primary_expr)
+		for i, piece in enumerate(primary_expr):
+			if piece == var:
+				result[i] = secondary_expr
+			elif isinstance(piece, list):
+				result[i] = substitute(var, piece, secondary_expr)
+			else:
+				pass
+	else: 
+		pass
+	return result
+	
 
 # Lambda Reduction: ['A', ['L', var, expr0], expr1]
 # Reduces to: expr1 subbed for all occurrences of var in expr0	
@@ -105,14 +186,14 @@ def check_conjunction1_reduction(parsed_expr):
 	else:
 		return False
 		
-# Disjunction: 	['A', ['I0', expr], ['DE', expr, expr, expr, expr]]
+# Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
 def check_disjunction0_reduction(parsed_expr):
 	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'I0' and parsed_expr[2][0] == 'DE':
 		return True
 	else:
 		return False
 		
-# Disjunction: 	['A', ['I1', expr], ['DE', expr, expr, expr, expr]]
+# Disjunction: 	['A', ['I1', expr], ['DE', var, expr, var, expr]]
 def check_disjunction1_reduction(parsed_expr):
 	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'I1' and parsed_expr[2][0] == 'DE':
 		return True
@@ -128,7 +209,7 @@ def check_existential_reduction(parsed_expr):
 		
 # Membership: 	['out', ['in', expr]]
 def check_membership_reduction(parsed_expr):
-	if parsed_expr[0] == 'out' and parsed_expr[1][0] == 'in':
+	if parsed_expr[0] == 'OUT' and parsed_expr[1][0] == 'IN':
 		return True
 	else:
 		return False
@@ -157,20 +238,40 @@ def find_reduction(parsed_expr):
 		result = parsed_expr[1][2]
 		return result
 	elif check_disjunction0_reduction(parsed_expr):
-		#Disjunction: 	['A', ['I0', expr], ['DE', expr, expr, expr, expr]]
-		pass
+		#Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
+		var = parsed_expr[2][1]
+		primary_expr = parsed_expr[2][2]
+		secondary_expr = parsed_expr[1][1]
+		result = substitute(var, primary_expr, secondary_expr)
+		return result
 	elif check_disjunction1_reduction(parsed_expr):
-		#Disjunction: 	['A', ['I1', expr], ['DE', expr, expr, expr, expr]]
-		pass
+		#Disjunction: 	['A', ['I1', expr], ['DE', var, expr, var, expr]]
+		var = parsed_expr[2][3]
+		primary_expr = parsed_expr[2][4]
+		secondary_expr = parsed_expr[1][1]
+		result = substitute(var, primary_expr, secondary_expr)
+		return result
 	elif check_existential_reduction(parsed_expr):
-		#Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
-		pass
+		#Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, var, expr]]
+		first_var = parsed_expr[2][1]
+		primary_expr = parsed_expr[2][3]
+		first_secondary_expr = parsed_expr[1][1]
+		second_var = parsed_expr[2][2]
+		second_secondary_expr = parsed_expr[1][2]
+		result = substitute(first_var, primary_expr, first_secondary_expr)
+		result = substitute(second_var, result, second_secondary_expr)
+		return result
 	elif check_membership_reduction(parsed_expr):
-		#Membership: 	['out', ['in', expr]]
-		pass
+		#Membership: 	['OUT', ['IN', expr]]
+		result = parsed_expr[1][1]
+		return result
 	elif check_universal_reduction(parsed_expr):
 		#Universal: 		['A', ['U', _, _], L-var]
-		pass
+		var = parsed_expr[1][1]
+		primary_expr = parsed_expr[1][2]
+		secondary_expr = parsed_expr[2]
+		result = substitute(var, primary_expr, secondary_expr)		
+		return result
 	else: 
 		if parsed_expr[0] == 'A':
 			result = ['A', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
@@ -178,8 +279,31 @@ def find_reduction(parsed_expr):
 		elif parsed_expr[0] == 'L':
 			result = ['L', var, find_reduction(parsed_expr[2])]
 			return result
+		elif parsed_expr[0] == 'P':
+			result = ['P', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
+			return result
+		elif parsed_expr[0] == 'U':
+			result = ['U', parsed_expr[1], find_reduction(parsed_expr[2])]
+			return result 
+		elif parsed_expr[0] == 'Pi0' or parsed_expr[0] == 'Pi1':
+			return parsed_expr
+		elif parsed_expr[0] == 'I0' or parsed_expr[0] == 'I1':
+			result = [parsed_expr[0], find_reduction(parsed_expr[1])]
+			return result
+		elif parsed_expr[0] == 'DE':
+			result = ['DE', parsed_expr[1], find_reduction(parsed_expr[2]), parsed_expr[3], find_reduction(parsed_expr[4])]
+			return result
+		elif parsed_expr[0] == 'EI':
+			result = ['EI', parsed_expr[1], find_reduction(parsed_expr[2])]
+			return result
+		elif parsed_expr[0] == 'EE':
+			result = ['EE', parsed_expr[1], parsed_expr[2], find_reduction(parsed_expr[3])]
+			return result
+		elif parsed_expr[0] == 'OUT' or parsed_expr[0] == 'IN':
+			result = [parsed_expr[0], find_reduction(parsed_expr[1])]
+			return result
 		else:
-			return parsedExpr
+			return parsed_expr
 			
 def normalize(parsed_expr, max_iterations = 100):
 	iterations = 1
@@ -192,25 +316,6 @@ def normalize(parsed_expr, max_iterations = 100):
 		iterations += 1
 		print("Iteration:", iterations, "\n current expression:", reduced)
 	return reduced
-	
-# Traverse the parsed expression to find all instances of var
-# in primary expr to be replaced by secondary_expr
-def substitute(var, primary_expr, secondary_expr):
-	result = None
-	if primary_expr == var:
-		result = secondary_expr
-	elif isinstance(primary_expr, list):
-		result = deepcopy(primary_expr)
-		for i, piece in enumerate(primary_expr):
-			if piece == var:
-				result[i] = secondary_expr
-			elif isinstance(piece, list):
-				result[i] = substitute(var, piece, secondary_expr)
-			else:
-				pass
-	else: 
-		pass
-	return result
 	
 # This is definitely not the most efficient program 
 # possible due to re-scanning and many many other redundancies.
@@ -278,6 +383,16 @@ if __name__ == "__main__":
 	print(unparse(reduction_result))
 	print(unparse(normalize_result))
 	print()
+	
+	#Does white space matter?
+		#white space ignored by default in pyparser
+	
+	#Lambda: 		['A', ['L', _, _], expr]
+	#Universal: 	['A', ['U', _, _], L-var]
+	#Conjunction:	['A', ['P', _, _], ['Pi0']]
+	#Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
+	#Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
+	#Membership: 	['OUT', ['IN', expr]]
 
 	
 # Couldn't figure out how to make results names work.
