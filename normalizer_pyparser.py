@@ -4,12 +4,11 @@ from copy import deepcopy
 """
 	Will attempt to normalize given lambda terms for NNST. 
 	
-	Syntax:
+	Syntax for Lambda Term Parsing:
 		Lambdas are to be written as (Lx.M)    	['L', variable, expr]
 		Application 							['A', expr, expr]
-		
 		Universal Quantification as U    		['U', L-var, expr]
-		Pairing as P( , )   				['P', expr, expr]
+		Pairing as P( , )   					['P', expr, expr]
 		Pi0 or Pi1    							['Pi0'] | ['Pi1']
 		Iota as I0(u) or I1(u)					['I0', expr] | ['I1', expr]
 		Disjunction Elim as DE(x0.t0, x1.t1)	['DE', var, expr, var, expr]
@@ -18,6 +17,17 @@ from copy import deepcopy
 		Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
 		Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
 		Substitution as SUB(_, _)				['SUB', [expr, prop], [expr, equality]]
+		
+	Syntax for Logical Term Parsing:
+		(logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
+		(logical_expr rightarrow logical_expr)  ['rightarrow', _, _]
+		forall x (logical_expr)					['forall', L-var, _]
+		(logical_expr in logical_expr)			['in', _, _]
+		(logical_expr equals logical_expr)		['equals', _, _]
+		(logical_expr vee logical_expr)			['vee', _, _]
+		exists x (logical_expr)					['exists', L-var, _]
+		{x | logical_expr}						['set', L-var, logical_expr]
+				
 
 	Reduction Syntax:
 		Lambda: 		['A', ['L', _, _], expr]
@@ -36,8 +46,10 @@ from copy import deepcopy
 	expr :: var | '(' expr expr ')' | '(' lam var . expr ')'
 
 	To do:
-	Unparsing for the complete lambda term language.
+	Unparsing for the complete lambda term language, up to needing parse/unparse for logical expr.
 	Parsing for logical expressions.
+	Unparsing for logical expressions.
+	Determining if a variable is free in a parsed logical expression.
 """
 
 var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
@@ -77,27 +89,73 @@ min = Literal('IN')
 eq = Literal('EQ')
 sub = Literal('SUB')
 
-logical_expr = Forward()
-
 # logical parsing
 # to suffice for the reduction rules for sub and eq, the cases to cover are
 # x not free in A
 # wedge
 # rightarrow
 # forall
-# t(x) \in {z | B(z, x)}
-# t \in x (x not free in t)
-# t(x) \in x (x free in t)
-# t(x) \in z
+# t(x) in {z | B(z, x)}
+# t in x 
+	# (x not free in t)
+# t(x) in x 
+	# (x free in t)
+# t(x) in z
+	# nothing to do in the event of this form
+	# implicit non-normal
 # t(x) = u(x)
 # vee
 # exists
 
+logical_expr = Forward()
 
-#expr << var
+# Logical variables lists
+L-var_list = ['la', 'lb', 'lc', 'ld', 'le', 'lf', 'lg', 'lh', 'li', 'lj', 'lk', 'll', 'lm', 'ln', 'lo', 'lp', 'lq', 'lr', 'ls', 'lt', 'lu', 'lv', 'lw', 'lx', 'ly', 'lz']
+L-var = oneOf("la lb lc ld le lf lg lh li lj lk ll lm ln lo lp lq lr ls lt lu lv lw lx ly lz")
 
-#application = lparen + expr + expr + rparen
+wedge = Literal('wedge').suppress()
+vee = Literal('vee').suppress()
+rightarrow = Literal('rightarrow').suppress()
+exists = Literal('exists')
+forall = Literal('forall')
+equals = Literal('=').suppress()
+member = Literal('in').suppress()
+lbrace = Literal('{').suppress()
+rbrace = Literal('}').suppress()
+pipe = Literal('|').suppress()
 
+def rearrange_action(x, connective):
+	return x[0].remove(connective).insert(0,connective)
+
+logical_expr << ( \
+				L-var | \
+				# (logical_expr wedge logical_expr)
+				Group( lparens + logical_expr + wedge + logical_expr + rparens ).setParseAction(rearrange(x, 'wedge')) | \
+				# (logical_expr rightarrow logical_expr)
+				Group( lparens + logical_expr + rightarrow + logical_expr + rparens ).setParseAction(rearrange(x, 'rightarrow')) | \
+				# forall x (logical_expr)
+				Group( forall + L-var + lparens + logical_expr + rparens ) | \
+				# (logical_expr in logical_expr)
+				Group( lparens + logical_expr + member + logical_expr + rparens ).setParseAction(rearrange(x, 'member')) | \
+				# (logical_expr equals logical_expr)
+				Group( lparens + logical_expr + equals + logical_expr + rparens ).setParseAction(rearrange(x, 'equals')) | \				
+				# (logical_expr vee logical_expr)
+				Group( lparens + logical_expr + vee + logical_expr + rparens ).setParseAction(rearrange(x, 'vee')) | \
+				# exists x (logical_expr)
+				Group( exists + L-var + lparens + logical_expr + rparens ) | \
+				# {x | logical_expr}
+				Group( lbrace + L-var + pipe + logical_expr + rbrace ).setParseAction(lambda x: x[0].insert(0,'set')) 
+				)
+				
+def has_free_occurrence_in(var, logical_expr):
+	pass
+	#assume false then
+	#return (recursive_call) or (recursive_call)
+	#returns true if it hits the variable
+	#if it finds a binder of that variable, then the call ends
+	#and it returns false for that sub-formula
+	#the truth of any free occurrence will then propagate up 
+	
 expr << ( \
 		var | \
 		# (expr expr)
@@ -147,22 +205,25 @@ def unparse(parsed_expr):
 	elif parsed_expr[0] == 'P': # ['P', expr, expr]
 	    expr_string = 'P' + '(' + unparse(parsed_expr[1]) + ', ' + unparse(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'Pi0' or parsed_expr[0] == 'Pi1': # ['Pi0'] | ['Pi1']
-	    pass
+	    expr_string = parsed_expr[0]
 	elif parsed_expr[0] == 'I0' or parsed_expr[0] == 'I1': # ['I0', expr] | ['I1', expr]
-	    pass
+	    expr_string = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'DE': # ['DE', var, expr, var, expr]
-	    pass
+	    expr_string = 'DE' + '(' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ', ' + parsed_expr[3] + '.' + unparse(parsed_expr[4]) + ')'
 	elif parsed_expr[0] == 'EI': # ['EI', L-var, expr]	
-	    pass
+	    expr_string = 'EI' + '(' + parsed_expr[1] + ', ' + unparse(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'EE': # ['EE', L-var, var, expr]
-	    pass
+	    expr_string = 'EE' + '(' + '(' + parsed_expr[1] + ', ' + parsed_expr[2] + ')' + '.' + unparse(parsed_expr[3]) + ')'
 	elif parsed_expr[0] == 'OUT' | parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
-	    pass
+	    expr_String = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'EQ': # ['EQ', expr, expr]
-	    pass
+	    expr_string = 'EQ' + '(' + unparse(parsed_expr[1]) + ', ' + unparsed(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'SUB': # ['SUB', [expr, prop], [expr, equality]]
-	    pass
+	    expr_string = 'SUB' + '(' + unparse(parsed_expr[1][0]) + ':' + unparse_logical(parsed_expr[1][1]) + ', ' + unparse(parsed_expr[2][0]) + ':' + unparse_logical(parsed_expr[2][1]) + ')'
 	return expr_string
+	
+def unparse_logical(parsed_expr):
+	pass
 	
 #print(' '.join(expr.parseString('(ab)').asList()[0]))
 
