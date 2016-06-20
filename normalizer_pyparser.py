@@ -34,6 +34,10 @@ from copy import deepcopy
 	lam :: 'L'
 	var :: 'a'...'z'
 	expr :: var | '(' expr expr ')' | '(' lam var . expr ')'
+
+	To do:
+	Unparsing for the complete lambda term language.
+	Parsing for logical expressions.
 """
 
 var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
@@ -73,6 +77,8 @@ min = Literal('IN')
 eq = Literal('EQ')
 sub = Literal('SUB')
 
+logical_expr = Forward()
+
 # logical parsing
 # to suffice for the reduction rules for sub and eq, the cases to cover are
 # x not free in A
@@ -94,46 +100,70 @@ sub = Literal('SUB')
 
 expr << ( \
 		var | \
-		Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \ #(expr expr)
-		Group( lparens + lam + var + dot + expr + rparens ) | \ # (Lx.expr)
-		Group( lparens + uni + var + dot + expr + rparens ) | \ # (Ux.expr)
-		Group( pair + lparens + expr + comma + expr + rparens ) | \ #P(expr, expr)
-		Group( pi0 ) | \ #Pi0
-		Group( pi1 ) | \ 
-		Group( i0 + lparens + expr + rparens ) | \ #I0(expr)
-		Group( i1 + lparens + expr + rparens ) | \ 
-		Group( de + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \ #DE(x0.t0, x1.t1)
-		Group( ei + lparens + var + comma + expr + rparens ) |\ #EI(m, u)
-		Group( ee + lparens + lparens + var + comma + var + rparens + dot + expr + rparens ) |\ #EE((x, s).v)
-		Group( mout + lparens + expr + rparens ) |\ #OUT(u)
-		Group( min + lparens + expr + rparens ) |\ #IN(u)
-		Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) |\ #EQ(x1.t1, x2.t2)
-		Group( sub + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) #SUB(expr : logical_expr , expr : s = r)
+		# (expr expr)
+		Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \
+		# (Lx.expr)
+		Group( lparens + lam + var + dot + expr + rparens ) | \
+		# (Ux.expr)
+		Group( lparens + uni + var + dot + expr + rparens ) | \
+		# P(expr, expr)
+		Group( pair + lparens + expr + comma + expr + rparens ) | \
+		# Pi0 
+		Group( pi0 ) | \
+		Group( pi1 ) | \
+		# I0(expr)
+		Group( i0 + lparens + expr + rparens ) | \
+		Group( i1 + lparens + expr + rparens ) | \
+		#DE(x0.t0, x1.t1)
+		Group( de + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \
+		#EI(m, u)
+		Group( ei + lparens + var + comma + expr + rparens ) | \
+		#EE((x, s).v)
+		Group( ee + lparens + lparens + var + comma + var + rparens + dot + expr + rparens ) | \
+		#OUT(u)
+		Group( mout + lparens + expr + rparens ) | \
+		#IN(u)
+		Group( min + lparens + expr + rparens ) | \
+		#EQ(x1.t1, x2.t2)
+		Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \
+		#SUB(expr : logical_expr , expr : s = r)
+		Group( sub + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens )
 		)
-		
-
-Disjunction Elim as DE(x0.t0, x1.t1)	['DE', var, expr, var, expr]
-Existential intro as EI(m, u) 			['EI', L-var, expr]		
-Existential elim as EE((x,s).v)			['EE', L-var, var(?), expr]
-Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
-Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
-Substitution as SUB(_, _)				['SUB', [expr, prop], [expr, equality]]
-		
-#Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \
-
 
 
 # Unparses expressions and returns the string representation
 # Takes in the full parsed expression list at index 0
 def unparse(parsed_expr):
 	expr_string = ""
-	if not isinstance(parsed_expr, list):
+	#if not isinstance(parsed_expr, list):
+	if parsed_expr in var_list:
 		expr_string = parsed_expr
-	elif parsed_expr[0] == 'A':
+	elif parsed_expr[0] == 'A': # ['A', expr, expr]
 		expr_string = '(' + unparse(parsed_expr[1]) + unparse(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'L':
+	elif parsed_expr[0] == 'L': # ['L', variable, expr]
 		expr_string = '(' + 'L' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'U': # ['U', L-var, expr]
+		expr_string = '(' + 'U' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'P': # ['P', expr, expr]
+	    expr_string = 'P' + '(' + unparse(parsed_expr[1]) + ', ' + unparse(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'Pi0' or parsed_expr[0] == 'Pi1': # ['Pi0'] | ['Pi1']
+	    pass
+	elif parsed_expr[0] == 'I0' or parsed_expr[0] == 'I1': # ['I0', expr] | ['I1', expr]
+	    pass
+	elif parsed_expr[0] == 'DE': # ['DE', var, expr, var, expr]
+	    pass
+	elif parsed_expr[0] == 'EI': # ['EI', L-var, expr]	
+	    pass
+	elif parsed_expr[0] == 'EE': # ['EE', L-var, var, expr]
+	    pass
+	elif parsed_expr[0] == 'OUT' | parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
+	    pass
+	elif parsed_expr[0] == 'EQ': # ['EQ', expr, expr]
+	    pass
+	elif parsed_expr[0] == 'SUB': # ['SUB', [expr, prop], [expr, equality]]
+	    pass
 	return expr_string
+	
 #print(' '.join(expr.parseString('(ab)').asList()[0]))
 
 # Traverse the parsed expression to find all instances of var
@@ -380,9 +410,10 @@ if __name__ == "__main__":
 	#print(reduction_result)
 	normalize_result = normalize(test_parse[0].asList())
 	print(normalize_result)
-	print(unparse(reduction_result))
 	print(unparse(normalize_result))
 	print()
+	
+	print(expr.parseString('Pi0'))
 	
 	#Does white space matter?
 		#white space ignored by default in pyparser
