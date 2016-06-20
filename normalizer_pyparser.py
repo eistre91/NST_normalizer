@@ -46,9 +46,9 @@ from copy import deepcopy
 	expr :: var | '(' expr expr ')' | '(' lam var . expr ')'
 
 	To do:
-	Unparsing for the complete lambda term language, up to needing parse/unparse for logical expr.
-	Parsing for logical expressions.
-	Unparsing for logical expressions.
+	Need to test: Unparsing for the complete lambda term language, up to needing parse/unparse for logical expr.
+	Need to test: Parsing for logical expressions.
+	Need to test: Unparsing for logical expressions.
 	Determining if a variable is free in a parsed logical expression.
 """
 
@@ -137,8 +137,8 @@ logical_expr << ( \
 				Group( forall + L-var + lparens + logical_expr + rparens ) | \
 				# (logical_expr in logical_expr)
 				Group( lparens + logical_expr + member + logical_expr + rparens ).setParseAction(rearrange(x, 'member')) | \
-				# (logical_expr equals logical_expr)
-				Group( lparens + logical_expr + equals + logical_expr + rparens ).setParseAction(rearrange(x, 'equals')) | \				
+				# (logical_expr = logical_expr)
+				Group( lparens + logical_expr + equals + logical_expr + rparens ).setParseAction(rearrange(x, '=')) | \				
 				# (logical_expr vee logical_expr)
 				Group( lparens + logical_expr + vee + logical_expr + rparens ).setParseAction(rearrange(x, 'vee')) | \
 				# exists x (logical_expr)
@@ -147,14 +147,44 @@ logical_expr << ( \
 				Group( lbrace + L-var + pipe + logical_expr + rbrace ).setParseAction(lambda x: x[0].insert(0,'set')) 
 				)
 				
-def has_free_occurrence_in(var, logical_expr):
-	pass
+# Binders:
+	# forall
+	# exists
+	# {x | logical_expr}	
+
+# Syntax: 
+	# L-var 
+	# (logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
+	# (logical_expr rightarrow logical_expr)  ['rightarrow', _, _]
+	# forall x (logical_expr)					['forall', L-var, _]
+	# (logical_expr in logical_expr)			['in', _, _]
+	# (logical_expr equals logical_expr)		['equals', _, _]
+	# (logical_expr vee logical_expr)			['vee', _, _]
+	# exists x (logical_expr)					['exists', L-var, _]
+	# {x | logical_expr}						['set', L-var, logical_expr]
+
+# For use with parsed logical expressions	
+def has_free_occurrence_in(var, parsed_expr):
 	#assume false then
 	#return (recursive_call) or (recursive_call)
 	#returns true if it hits the variable
 	#if it finds a binder of that variable, then the call ends
 	#and it returns false for that sub-formula
 	#the truth of any free occurrence will then propagate up 
+	free_occurrence = False
+	if parsed_expr == var:
+		free_occurrence = True
+	elif parsed_expr[0] in ['wedge', 'rightarrow', 'in', '=', 'vee']:
+		free_occurrence = has_free_occurrence_in(var, parsed_expr[1]) or has_free_occurrence_in(var, parsed_expr[2])
+	elif parsed_expr[0] in ['forall', 'exists', 'set']:
+		if parsed_expr[1] == var: # the variable is bound in the subexpression
+			free_occurrence = False
+		else:
+			free_occurrence = has_free_occurrence_in(var, parsed_expr[2])
+	elif parsed_expr in L-var_list: #if it gets there, didn't find the variable unbound or bound
+		free_occurrence = False
+	return free_occurrence
+
 	
 expr << ( \
 		var | \
@@ -222,9 +252,38 @@ def unparse(parsed_expr):
 	    expr_string = 'SUB' + '(' + unparse(parsed_expr[1][0]) + ':' + unparse_logical(parsed_expr[1][1]) + ', ' + unparse(parsed_expr[2][0]) + ':' + unparse_logical(parsed_expr[2][1]) + ')'
 	return expr_string
 	
-def unparse_logical(parsed_expr):
-	pass
+#	Syntax for Logical Term Parsing:
+#		(logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
+#		(logical_expr rightarrow logical_expr)  ['rightarrow', _, _]
+#		forall x (logical_expr)					['forall', L-var, _]
+#		(logical_expr in logical_expr)			['in', _, _]
+#		(logical_expr equals logical_expr)		['equals', _, _]
+#		(logical_expr vee logical_expr)			['vee', _, _]
+#		exists x (logical_expr)					['exists', L-var, _]
+#		{x | logical_expr}						['set', L-var, logical_expr]
 	
+def unparse_logical(parsed_expr):
+	expr_string = ""
+	if parsed_expr in L-var_list:
+		expr_string = parsed_expr
+	elif parsed_expr[0] == 'wedge': #['wedge', logical_expr, logical_expr]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'wedge' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'rightarrow': #['rightarrow', _, _]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'rightarrow' unparse_logical(parsed_expr[2]) + ')'	
+	elif parsed_expr[0] == 'forall': #['forall', L-var, _]
+		expr_string = 'forall' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'in': #['in', _, _]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'in' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'equals': #['=', _, _]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + '=' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'vee': #['vee', _, _]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'vee' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'exists': #['exists', L-var, _]
+		expr_string = 'exists' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == 'set': #['set', L-var, logical_expr]
+		expr_string = '{' + parsed_expr[1] + '|' + unparse_logical(parsed_expr[2]) + '}'
+	return expr_string
+
 #print(' '.join(expr.parseString('(ab)').asList()[0]))
 
 # Traverse the parsed expression to find all instances of var
