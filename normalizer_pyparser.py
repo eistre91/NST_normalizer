@@ -16,7 +16,9 @@ from copy import deepcopy
 		Existential elim as EE((x,s).v)			['EE', L-var, var(?), expr]
 		Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
 		Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
-		Substitution as SUB(_, _)				['SUB', expr, prop, expr, equality]
+		Substitution_0 as SUB0(_, _)			['SUB0', expr, prop, expr, equality]
+		Substitution_1 as SUB1(_, _)			['SUB1', expr, prop, expr, equality]
+
 		
 	Syntax for Logical Term Parsing:
 		(logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
@@ -52,8 +54,21 @@ from copy import deepcopy
 	Need to test: Unparsing for logical expressions.
 	Need to test: Determining if a variable is free in a parsed logical expression.
 	Finish reduction rules by adding rules for eq/sub.
+		Revealed problems: Need to code in SUB0 and SUB1 to designate which expression is being replaced.
+								SUB0 means the left hand term is being used to replace. the right hand
+								SUB1 is vice versa.
+								Substitute function will need to work for non atomic variables.
+									Wait no, I don't actually have to perform the substitution.
+									Well sorta, I need to determine what's free in the logical expression.
+									And to do that do I need to substitute x for s and test x for freeness...or can I test s for freeness? 
+									Even though that's not atomic.
+									I think I literally just have to see there are no occurences of s...because s wouldn't be bound anyway.
+									Unless s was being used in multiple places, or we replace it with x and x was in multiple places...but then it has multiple meanings.
+									And so I don't have to care about the other ones. 
+									Enforcing "fresh variables". If x is bound in some part of the logical expression, then x's only occur inside that. 
+									The first reduction rule then becomes: If the thing your subbing for doesn't actually occur, then you didn't need to have subbed.
 """
-
+	
 var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
 var = oneOf("a b c d e f g h i j k l m n o p q r s t u v w x y z")
 
@@ -89,7 +104,8 @@ mout = Literal('OUT')
 min = Literal('IN')
 
 eq = Literal('EQ')
-sub = Literal('SUB')
+sub0 = Literal('SUB0')
+sub1 = Literal('SUB1')
 
 # logical parsing
 # to suffice for the reduction rules for sub and eq, the cases to cover are
@@ -186,7 +202,16 @@ def has_free_occurrence_in(var, parsed_expr):
 	elif parsed_expr in L-var_list: #if it gets there, didn't find the variable unbound or bound
 		free_occurrence = False
 	return free_occurrence
-
+	
+def is_subformula_of(parsed_subformula, parsed_expr):
+	is_subformula = False
+	if parsed_expr == parsed_subformula:
+		is_subformula = True
+	elif parsed_expr[0] in ['wedge', 'rightarrow', 'in', '=', 'vee']:
+		is_subformula = is_subformula_of(parsed_subformula, parsed_expr[1]) or is_subformula_of(parsed_subformula, parsed_expr[2])
+	elif parsed_expr[0] in ['forall', 'exists', 'set']:
+		is_subformula = is_subformula_of(parsed_subformula, parsed_expr[2])
+	return is_subformula
 	
 expr << ( \
 		var | \
@@ -217,7 +242,8 @@ expr << ( \
 		#EQ(x1.t1, x2.t2)
 		Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \
 		#SUB(expr : logical_expr , expr : s = r)
-		Group( sub + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens )
+		Group( sub0 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) | \
+		Group( sub1 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) | 
 		)
 
 
@@ -246,12 +272,12 @@ def unparse(parsed_expr):
 	    expr_string = 'EI' + '(' + parsed_expr[1] + ', ' + unparse(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'EE': # ['EE', L-var, var, expr]
 	    expr_string = 'EE' + '(' + '(' + parsed_expr[1] + ', ' + parsed_expr[2] + ')' + '.' + unparse(parsed_expr[3]) + ')'
-	elif parsed_expr[0] == 'OUT' | parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
+	elif parsed_expr[0] == 'OUT' or parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
 	    expr_String = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'EQ': # ['EQ', expr, expr]
 	    expr_string = 'EQ' + '(' + unparse(parsed_expr[1]) + ', ' + unparsed(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'SUB': # ['SUB', expr, prop, expr, equality]
-	    expr_string = 'SUB' + '(' + unparse(parsed_expr[1]) + ':' + unparse_logical(parsed_expr[2]) + ', ' + unparse(parsed_expr[3]) + ':' + unparse_logical(parsed_expr[4]) + ')'
+	elif parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1': # ['SUB', expr, prop, expr, equality]
+	    expr_string = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ':' + unparse_logical(parsed_expr[2]) + ', ' + unparse(parsed_expr[3]) + ':' + unparse_logical(parsed_expr[4]) + ')'
 	return expr_string
 	
 #	Syntax for Logical Term Parsing:
@@ -368,7 +394,7 @@ def check_membership_reduction(parsed_expr):
 
 # Equality: ['SUB', expr, prop, ['EQ', expr, expr], equality]				
 def check_equality_reduction(parsed_expr):
-	if parsed_expr[0] == 'SUB' and parsed_expr[3][1] == 'EQ':
+	if (parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1') and parsed_expr[3][1] == 'EQ':
 		return True
 	else:
 		return False
@@ -390,10 +416,49 @@ def check_equality_reduction(parsed_expr):
 # vee
 # exists
 
-# ['SUB', expr, prop, ['EQ', expr, expr], equality]		
+# ['SUB0', expr, prop, ['EQ', expr, expr], equality]		
 def perform_equality_reduction(parsed_expr):
-	pass
-		
+	parsed_prop = parsed_expr[2]
+	parsed_equality = parsed_expr[4]
+	
+	result = []
+	# no occurrences of the right hand expr if sub0 or vice versa
+	# i.e. the substitution changed nothing
+	if (parsed_expr[0] == 'SUB0' and not is_subformula_of(parsed_equality[2], parsed_prop)) or (parsed_expr[0] == 'SUB1' and not is_subformula_of(parsed_equality[1], parsed_prop)):
+		result = parsed_expr[1] #return the lambda term for the proposition prior to the vacuous substitution
+	# wedge
+	elif parsed_prop[0] == 'wedge':
+		# "distributes" the substitute action into the conjunction
+		sub_left = [parsed_expr[0], ['A', parsed_expr[1], ['Pi0']], parsed_prop[1], parsed_expr[3], parsed_equality]
+		sub_right = [parsed_expr[0], ['A', parsed_expr[1], ['Pi1']], parsed_prop[2], parsed_expr[3], parsed_equality]
+		result = ['P', sub_left, sub_right]
+	# rightarrow
+	elif parsed_prop[0] == 'rightarrow':
+		pass
+	# forall
+	elif parsed_prop[0] == 'forall':
+		pass
+	elif parsed_prop[0] == 'in':
+		# t(x) in {z | B(z, x)}
+		if parsed_prop[2][0] == 'set':
+			pass
+		# t in x 
+			# (x not free in t)
+		# t(x) in x 
+			# (x free in t)
+		# t(x) in z
+			# nothing to do in the event of this form
+			# implicit non-normal
+	# t(x) = u(x)
+	elif parsed_prop[0] == '=':
+		pass
+	# vee
+	elif parsed_prop[0] == 'vee':
+		pass
+	# exists
+	elif parsed_prop[0] == 'exists':
+		pass
+			
 # Traverse the parsed expression and find a reduction
 # Can't guarantee much about what order this algorithm proceeds, 
 # but it will find all reductions
@@ -491,8 +556,8 @@ def find_reduction(parsed_expr):
 		elif parsed_expr[0] == 'EQ':
 			result = ['EQ', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
 			return result
-		elif parsed_expr[0] == 'SUB':
-			result = ['SUB', find_reduction(parsed_expr[1]), parsed_expr[2], find_reduction(parsed_expr[3]), parsed_expr[4]]
+		elif parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1':
+			result = [parsed_expr[0], find_reduction(parsed_expr[1]), parsed_expr[2], find_reduction(parsed_expr[3]), parsed_expr[4]]
 			return result
 		else:
 			return parsed_expr
