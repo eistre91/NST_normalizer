@@ -16,7 +16,7 @@ from copy import deepcopy
 		Existential elim as EE((x,s).v)			['EE', L-var, var(?), expr]
 		Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
 		Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
-		Substitution as SUB(_, _)				['SUB', [expr, prop], [expr, equality]]
+		Substitution as SUB(_, _)				['SUB', expr, prop, expr, equality]
 		
 	Syntax for Logical Term Parsing:
 		(logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
@@ -36,7 +36,8 @@ from copy import deepcopy
 		Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
 		Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
 		Membership: 	['OUT', ['IN', expr]]
-		Equality: 
+		Equality: 		['SUB', expr, prop, ['EQ', expr, expr], equality]				
+
 		
 		
 	BNF:
@@ -49,7 +50,8 @@ from copy import deepcopy
 	Need to test: Unparsing for the complete lambda term language, up to needing parse/unparse for logical expr.
 	Need to test: Parsing for logical expressions.
 	Need to test: Unparsing for logical expressions.
-	Determining if a variable is free in a parsed logical expression.
+	Need to test: Determining if a variable is free in a parsed logical expression.
+	Finish reduction rules by adding rules for eq/sub.
 """
 
 var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
@@ -248,8 +250,8 @@ def unparse(parsed_expr):
 	    expr_String = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'EQ': # ['EQ', expr, expr]
 	    expr_string = 'EQ' + '(' + unparse(parsed_expr[1]) + ', ' + unparsed(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'SUB': # ['SUB', [expr, prop], [expr, equality]]
-	    expr_string = 'SUB' + '(' + unparse(parsed_expr[1][0]) + ':' + unparse_logical(parsed_expr[1][1]) + ', ' + unparse(parsed_expr[2][0]) + ':' + unparse_logical(parsed_expr[2][1]) + ')'
+	elif parsed_expr[0] == 'SUB': # ['SUB', expr, prop, expr, equality]
+	    expr_string = 'SUB' + '(' + unparse(parsed_expr[1]) + ':' + unparse_logical(parsed_expr[2]) + ', ' + unparse(parsed_expr[3]) + ':' + unparse_logical(parsed_expr[4]) + ')'
 	return expr_string
 	
 #	Syntax for Logical Term Parsing:
@@ -363,10 +365,40 @@ def check_membership_reduction(parsed_expr):
 		return True
 	else:
 		return False
+
+# Equality: ['SUB', expr, prop, ['EQ', expr, expr], equality]				
+def check_equality_reduction(parsed_expr):
+	if parsed_expr[0] == 'SUB' and parsed_expr[3][1] == 'EQ':
+		return True
+	else:
+		return False
+
+# to suffice for the reduction rules for sub and eq, the cases to cover are
+# x not free in A
+# wedge
+# rightarrow
+# forall
+# t(x) in {z | B(z, x)}
+# t in x 
+	# (x not free in t)
+# t(x) in x 
+	# (x free in t)
+# t(x) in z
+	# nothing to do in the event of this form
+	# implicit non-normal
+# t(x) = u(x)
+# vee
+# exists
+
+# ['SUB', expr, prop, ['EQ', expr, expr], equality]		
+def perform_equality_reduction(parsed_expr):
+	pass
 		
 # Traverse the parsed expression and find a reduction
 # Can't guarantee much about what order this algorithm proceeds, 
 # but it will find all reductions
+# Could use serious refactoring: return result moved out of the if statements
+#								 put each reduction in its own function
 def find_reduction(parsed_expr):
 	"""If you find reduction at the top level, do that one.
 	Else go looking until you find one in a subtree, or reach a var."""
@@ -422,6 +454,10 @@ def find_reduction(parsed_expr):
 		secondary_expr = parsed_expr[2]
 		result = substitute(var, primary_expr, secondary_expr)		
 		return result
+	elif check_equality_reduction(parsed_expr): 
+		#Equality: ['SUB', expr, prop, ['EQ', expr, expr], equality]
+		result = perform_equality_reduction(parsed_expr)
+		return result
 	else: 
 		if parsed_expr[0] == 'A':
 			result = ['A', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
@@ -452,6 +488,12 @@ def find_reduction(parsed_expr):
 		elif parsed_expr[0] == 'OUT' or parsed_expr[0] == 'IN':
 			result = [parsed_expr[0], find_reduction(parsed_expr[1])]
 			return result
+		elif parsed_expr[0] == 'EQ':
+			result = ['EQ', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
+			return result
+		elif parsed_expr[0] == 'SUB':
+			result = ['SUB', find_reduction(parsed_expr[1]), parsed_expr[2], find_reduction(parsed_expr[3]), parsed_expr[4]]
+			return result
 		else:
 			return parsed_expr
 			
@@ -467,8 +509,7 @@ def normalize(parsed_expr, max_iterations = 100):
 		print("Iteration:", iterations, "\n current expression:", reduced)
 	return reduced
 	
-# This is definitely not the most efficient program 
-# possible due to re-scanning and many many other redundancies.
+# This is definitely not the most efficient program possible due to re-scanning and many many other redundancies.
 
 # Test code
 if __name__ == "__main__":
