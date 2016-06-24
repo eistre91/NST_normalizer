@@ -7,13 +7,13 @@ from copy import deepcopy
 	Syntax for Lambda Term Parsing:
 		Lambdas are to be written as (Lx.M)    	['L', variable, expr]
 		Application 							['A', expr, expr]
-		Universal Quantification as U    		['U', L-var, expr]
+		Universal Quantification as U    		['U', L_var, expr]
 		Pairing as P( , )   					['P', expr, expr]
 		Pi0 or Pi1    							['Pi0'] | ['Pi1']
 		Iota as I0(u) or I1(u)					['I0', expr] | ['I1', expr]
 		Disjunction Elim as DE(x0.t0, x1.t1)	['DE', var, expr, var, expr]
-		Existential intro as EI(m, u) 			['EI', L-var, expr]		
-		Existential elim as EE((x,s).v)			['EE', L-var, var(?), expr]
+		Existential intro as EI(m, u) 			['EI', L_var, expr]		
+		Existential elim as EE((x,s).v)			['EE', L_var, var(?), expr]
 		Membership as OUT(u) and IN(u)			['OUT', expr] | ['IN', expr]
 		Equality introduction as EQ(_ ,_)		['EQ', expr, expr]
 		Substitution_0 as SUB0(_, _)			['SUB0', expr, prop, expr, equality]
@@ -23,20 +23,20 @@ from copy import deepcopy
 	Syntax for Logical Term Parsing:
 		(logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
 		(logical_expr rightarrow logical_expr)  ['rightarrow', _, _]
-		forall x (logical_expr)					['forall', L-var, _]
+		forall x (logical_expr)					['forall', L_var, _]
 		(logical_expr in logical_expr)			['in', _, _]
 		(logical_expr equals logical_expr)		['equals', _, _]
 		(logical_expr vee logical_expr)			['vee', _, _]
-		exists x (logical_expr)					['exists', L-var, _]
-		{x | logical_expr}						['set', L-var, logical_expr]
+		exists x (logical_expr)					['exists', L_var, _]
+		{x | logical_expr}						['set', L_var, logical_expr]
 				
 
 	Reduction Syntax:
 		Lambda: 		['A', ['L', _, _], expr]
-		Universal: 		['A', ['U', _, _], L-var]
+		Universal: 		['A', ['U', _, _], L_var]
 		Conjunction:	['A', ['P', _, _], ['Pi0']]
 		Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
-		Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
+		Existential: 	['A', ['EI', L_var, expr], ['EE', L_var, expr, expr]]
 		Membership: 	['OUT', ['IN', expr]]
 		Equality: 		['SUB', expr, prop, ['EQ', expr, expr], equality]				
 
@@ -54,10 +54,7 @@ from copy import deepcopy
 	Need to test: Unparsing for logical expressions.
 	Need to test: Determining if a variable is free in a parsed logical expression.
 	Finish reduction rules by adding rules for eq/sub.
-		Revealed problems: Need to code in SUB0 and SUB1 to designate which expression is being replaced.
-								SUB0 means the left hand term is being used to replace. the right hand
-								SUB1 is vice versa.
-								Substitute function will need to work for non atomic variables.
+		Revealed problems: Substitute function will need to work for non atomic variables.
 									Wait no, I don't actually have to perform the substitution.
 									Well sorta, I need to determine what's free in the logical expression.
 									And to do that do I need to substitute x for s and test x for freeness...or can I test s for freeness? 
@@ -68,6 +65,7 @@ from copy import deepcopy
 									Enforcing "fresh variables". If x is bound in some part of the logical expression, then x's only occur inside that. 
 									The first reduction rule then becomes: If the thing your subbing for doesn't actually occur, then you didn't need to have subbed.
 """
+used_variables = []
 	
 var_list = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
 var = oneOf("a b c d e f g h i j k l m n o p q r s t u v w x y z")
@@ -128,8 +126,8 @@ sub1 = Literal('SUB1')
 logical_expr = Forward()
 
 # Logical variables lists
-L-var_list = ['la', 'lb', 'lc', 'ld', 'le', 'lf', 'lg', 'lh', 'li', 'lj', 'lk', 'll', 'lm', 'ln', 'lo', 'lp', 'lq', 'lr', 'ls', 'lt', 'lu', 'lv', 'lw', 'lx', 'ly', 'lz']
-L-var = oneOf("la lb lc ld le lf lg lh li lj lk ll lm ln lo lp lq lr ls lt lu lv lw lx ly lz")
+L_var_list = ['la', 'lb', 'lc', 'ld', 'le', 'lf', 'lg', 'lh', 'li', 'lj', 'lk', 'll', 'lm', 'ln', 'lo', 'lp', 'lq', 'lr', 'ls', 'lt', 'lu', 'lv', 'lw', 'lx', 'ly', 'lz']
+L_var = oneOf("la lb lc ld le lf lg lh li lj lk ll lm ln lo lp lq lr ls lt lu lv lw lx ly lz")
 
 wedge = Literal('wedge').suppress()
 vee = Literal('vee').suppress()
@@ -142,27 +140,27 @@ lbrace = Literal('{').suppress()
 rbrace = Literal('}').suppress()
 pipe = Literal('|').suppress()
 
-def rearrange_action(x, connective):
+def rearrange(x, connective):
 	return x[0].remove(connective).insert(0,connective)
 
 logical_expr << ( \
-				L-var | \
+				L_var | \
 				# (logical_expr wedge logical_expr)
-				Group( lparens + logical_expr + wedge + logical_expr + rparens ).setParseAction(rearrange(x, 'wedge')) | \
+				Group( lparens + logical_expr + wedge + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, 'wedge')) | \
 				# (logical_expr rightarrow logical_expr)
-				Group( lparens + logical_expr + rightarrow + logical_expr + rparens ).setParseAction(rearrange(x, 'rightarrow')) | \
+				Group( lparens + logical_expr + rightarrow + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, 'rightarrow')) | \
 				# forall x (logical_expr)
-				Group( forall + L-var + lparens + logical_expr + rparens ) | \
+				Group( forall + L_var + lparens + logical_expr + rparens ) | \
 				# (logical_expr in logical_expr)
-				Group( lparens + logical_expr + member + logical_expr + rparens ).setParseAction(rearrange(x, 'member')) | \
+				Group( lparens + logical_expr + member + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, 'member')) | \
 				# (logical_expr = logical_expr)
-				Group( lparens + logical_expr + equals + logical_expr + rparens ).setParseAction(rearrange(x, '=')) | \				
+				Group( lparens + logical_expr + equals + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, '=')) | \
 				# (logical_expr vee logical_expr)
-				Group( lparens + logical_expr + vee + logical_expr + rparens ).setParseAction(rearrange(x, 'vee')) | \
+				Group( lparens + logical_expr + vee + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, 'vee')) | \
 				# exists x (logical_expr)
-				Group( exists + L-var + lparens + logical_expr + rparens ) | \
+				Group( exists + L_var + lparens + logical_expr + rparens ) | \
 				# {x | logical_expr}
-				Group( lbrace + L-var + pipe + logical_expr + rbrace ).setParseAction(lambda x: x[0].insert(0,'set')) 
+				Group( lbrace + L_var + pipe + logical_expr + rbrace ).setParseAction(lambda x: x[0].insert(0,'set')) 
 				)
 				
 # Binders:
@@ -171,15 +169,15 @@ logical_expr << ( \
 	# {x | logical_expr}	
 
 # Syntax: 
-	# L-var 
+	# L_var 
 	# (logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
 	# (logical_expr rightarrow logical_expr)  ['rightarrow', _, _]
-	# forall x (logical_expr)					['forall', L-var, _]
+	# forall x (logical_expr)					['forall', L_var, _]
 	# (logical_expr in logical_expr)			['in', _, _]
 	# (logical_expr equals logical_expr)		['equals', _, _]
 	# (logical_expr vee logical_expr)			['vee', _, _]
-	# exists x (logical_expr)					['exists', L-var, _]
-	# {x | logical_expr}						['set', L-var, logical_expr]
+	# exists x (logical_expr)					['exists', L_var, _]
+	# {x | logical_expr}						['set', L_var, logical_expr]
 
 # For use with parsed logical expressions	
 def has_free_occurrence_in(var, parsed_expr):
@@ -199,7 +197,7 @@ def has_free_occurrence_in(var, parsed_expr):
 			free_occurrence = False
 		else:
 			free_occurrence = has_free_occurrence_in(var, parsed_expr[2])
-	elif parsed_expr in L-var_list: #if it gets there, didn't find the variable unbound or bound
+	elif parsed_expr in L_var_list: #if it gets there, didn't find the variable unbound or bound
 		free_occurrence = False
 	return free_occurrence
 	
@@ -213,8 +211,18 @@ def is_subformula_of(parsed_subformula, parsed_expr):
 		is_subformula = is_subformula_of(parsed_subformula, parsed_expr[2])
 	return is_subformula
 	
+def replace_subformula(parsed_expr, replaced, replacer):
+	result = parsed_expr
+	if parsed_expr == replaced:
+		result = replacer
+	elif parsed_expr[0] in ['wedge', 'rightarrow', 'in', '=', 'vee']:
+		result = [parsed_expr[0], replace_subformula(parsed_expr[1], replaced, replacer), replace_subformula(parsed_expr[2], replaced, replacer)]
+	elif parsed_expr[0] in ['forall', 'exists', 'set']:
+		result = [parsed_expr[0], parsed_expr[1], replace_subformula(parsed_expr[2], replaced, replacer)]
+	return result
+	
 expr << ( \
-		var | \
+		var.setParseAction(lambda x: used_variables.append(x)) | \
 		# (expr expr)
 		Group(lparens + expr + expr + rparens).setParseAction(lambda x: x[0].insert(0,'A')) | \
 		# (Lx.expr)
@@ -243,7 +251,7 @@ expr << ( \
 		Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \
 		#SUB(expr : logical_expr , expr : s = r)
 		Group( sub0 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) | \
-		Group( sub1 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) | 
+		Group( sub1 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) 
 		)
 
 
@@ -258,7 +266,7 @@ def unparse(parsed_expr):
 		expr_string = '(' + unparse(parsed_expr[1]) + unparse(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'L': # ['L', variable, expr]
 		expr_string = '(' + 'L' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'U': # ['U', L-var, expr]
+	elif parsed_expr[0] == 'U': # ['U', L_var, expr]
 		expr_string = '(' + 'U' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'P': # ['P', expr, expr]
 	    expr_string = 'P' + '(' + unparse(parsed_expr[1]) + ', ' + unparse(parsed_expr[2]) + ')'
@@ -268,9 +276,9 @@ def unparse(parsed_expr):
 	    expr_string = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'DE': # ['DE', var, expr, var, expr]
 	    expr_string = 'DE' + '(' + parsed_expr[1] + '.' + unparse(parsed_expr[2]) + ', ' + parsed_expr[3] + '.' + unparse(parsed_expr[4]) + ')'
-	elif parsed_expr[0] == 'EI': # ['EI', L-var, expr]	
+	elif parsed_expr[0] == 'EI': # ['EI', L_var, expr]	
 	    expr_string = 'EI' + '(' + parsed_expr[1] + ', ' + unparse(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'EE': # ['EE', L-var, var, expr]
+	elif parsed_expr[0] == 'EE': # ['EE', L_var, var, expr]
 	    expr_string = 'EE' + '(' + '(' + parsed_expr[1] + ', ' + parsed_expr[2] + ')' + '.' + unparse(parsed_expr[3]) + ')'
 	elif parsed_expr[0] == 'OUT' or parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
 	    expr_String = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
@@ -283,22 +291,22 @@ def unparse(parsed_expr):
 #	Syntax for Logical Term Parsing:
 #		(logical_expr wedge logical_expr)		['wedge', logical_expr, logical_expr]
 #		(logical_expr rightarrow logical_expr)  ['rightarrow', _, _]
-#		forall x (logical_expr)					['forall', L-var, _]
+#		forall x (logical_expr)					['forall', L_var, _]
 #		(logical_expr in logical_expr)			['in', _, _]
 #		(logical_expr equals logical_expr)		['equals', _, _]
 #		(logical_expr vee logical_expr)			['vee', _, _]
-#		exists x (logical_expr)					['exists', L-var, _]
-#		{x | logical_expr}						['set', L-var, logical_expr]
+#		exists x (logical_expr)					['exists', L_var, _]
+#		{x | logical_expr}						['set', L_var, logical_expr]
 	
 def unparse_logical(parsed_expr):
 	expr_string = ""
-	if parsed_expr in L-var_list:
+	if parsed_expr in L_var_list:
 		expr_string = parsed_expr
 	elif parsed_expr[0] == 'wedge': #['wedge', logical_expr, logical_expr]
 		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'wedge' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'rightarrow': #['rightarrow', _, _]
-		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'rightarrow' unparse_logical(parsed_expr[2]) + ')'	
-	elif parsed_expr[0] == 'forall': #['forall', L-var, _]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'rightarrow' + unparse_logical(parsed_expr[2]) + ')'	
+	elif parsed_expr[0] == 'forall': #['forall', L_var, _]
 		expr_string = 'forall' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'in': #['in', _, _]
 		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'in' + unparse_logical(parsed_expr[2]) + ')'
@@ -306,9 +314,9 @@ def unparse_logical(parsed_expr):
 		expr_string = '(' + unparse_logical(parsed_expr[1]) + '=' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'vee': #['vee', _, _]
 		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'vee' + unparse_logical(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'exists': #['exists', L-var, _]
+	elif parsed_expr[0] == 'exists': #['exists', L_var, _]
 		expr_string = 'exists' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'set': #['set', L-var, logical_expr]
+	elif parsed_expr[0] == 'set': #['set', L_var, logical_expr]
 		expr_string = '{' + parsed_expr[1] + '|' + unparse_logical(parsed_expr[2]) + '}'
 	return expr_string
 
@@ -343,7 +351,7 @@ def check_lambda_reduction(parsed_expr):
 	else:
 		return False
 		
-# Universal:	['A', ['U', _, _], L-var]
+# Universal:	['A', ['U', _, _], L_var]
 def check_universal_reduction(parsed_expr):
 	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'U':
 		return True
@@ -378,7 +386,7 @@ def check_disjunction1_reduction(parsed_expr):
 	else:
 		return False
 		
-# Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
+# Existential: 	['A', ['EI', L_var, expr], ['EE', L_var, expr, expr]]
 def check_existential_reduction(parsed_expr):
 	if parsed_expr[0] == 'A' and parsed_expr[1][0] == 'EI' and parsed_expr[2][0] == 'EE':
 		return True
@@ -434,7 +442,24 @@ def perform_equality_reduction(parsed_expr):
 		result = ['P', sub_left, sub_right]
 	# rightarrow
 	elif parsed_prop[0] == 'rightarrow':
-		pass
+		# this one sucks...seriously
+		opposite = ''
+		if parsed_expr[0] == 'SUB0':
+			opposite = 'SUB1'
+			replaced = parsed_equality[2]
+			replacer = parsed_equality[1]
+		elif parsed_expr[0] == 'SUB1':
+			opposite = 'SUB0'
+			replaced = parsed_equality[1]
+			replacer = parsed_equality[2]
+		# needs a new variable to instantiate the new assumption
+		remaining_variables = set(var_list).difference(set(used_variables))
+		new_variable = remaining_variables.pop()
+		used_variables.append(new_variable)
+		inner_sub = [opposite, new_variable, replace_subformula(parsed_prop[1], replaced, replacer), parsed_expr[3], parsed_equality]
+		apply = ['A', parsed_expr[1], inner_sub]
+		outer_sub = [parsed_expr[0], apply, parsed_prop[2], parsed_expr[3], parsed_equality]
+		result = ['L', new_variable, outer_sub]
 	# forall
 	elif parsed_prop[0] == 'forall':
 		pass
@@ -458,6 +483,7 @@ def perform_equality_reduction(parsed_expr):
 	# exists
 	elif parsed_prop[0] == 'exists':
 		pass
+	return result
 			
 # Traverse the parsed expression and find a reduction
 # Can't guarantee much about what order this algorithm proceeds, 
@@ -499,7 +525,7 @@ def find_reduction(parsed_expr):
 		result = substitute(var, primary_expr, secondary_expr)
 		return result
 	elif check_existential_reduction(parsed_expr):
-		#Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, var, expr]]
+		#Existential: 	['A', ['EI', L_var, expr], ['EE', L_var, var, expr]]
 		first_var = parsed_expr[2][1]
 		primary_expr = parsed_expr[2][3]
 		first_secondary_expr = parsed_expr[1][1]
@@ -513,7 +539,7 @@ def find_reduction(parsed_expr):
 		result = parsed_expr[1][1]
 		return result
 	elif check_universal_reduction(parsed_expr):
-		#Universal: 		['A', ['U', _, _], L-var]
+		#Universal: 		['A', ['U', _, _], L_var]
 		var = parsed_expr[1][1]
 		primary_expr = parsed_expr[1][2]
 		secondary_expr = parsed_expr[2]
@@ -641,14 +667,19 @@ if __name__ == "__main__":
 	
 	print(expr.parseString('Pi0'))
 	
+	test_string = '((Lx.(OUT(x)x))IN(Lx.(OUT(x)x)))'
+	test_parse = expr.parseString(test_string)
+	print(test_parse)
+	normalize_result = normalize(test_parse[0].asList())
+	
 	#Does white space matter?
 		#white space ignored by default in pyparser
 	
 	#Lambda: 		['A', ['L', _, _], expr]
-	#Universal: 	['A', ['U', _, _], L-var]
+	#Universal: 	['A', ['U', _, _], L_var]
 	#Conjunction:	['A', ['P', _, _], ['Pi0']]
 	#Disjunction: 	['A', ['I0', expr], ['DE', var, expr, var, expr]]
-	#Existential: 	['A', ['EI', L-var, expr], ['EE', L-var, expr, expr]]
+	#Existential: 	['A', ['EI', L_var, expr], ['EE', L_var, expr, expr]]
 	#Membership: 	['OUT', ['IN', expr]]
 
 	
