@@ -281,7 +281,7 @@ def unparse(parsed_expr):
 	elif parsed_expr[0] == 'EE': # ['EE', L_var, var, expr]
 	    expr_string = 'EE' + '(' + '(' + parsed_expr[1] + ', ' + parsed_expr[2] + ')' + '.' + unparse(parsed_expr[3]) + ')'
 	elif parsed_expr[0] == 'OUT' or parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
-	    expr_String = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
+	    expr_string = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'EQ': # ['EQ', expr, expr]
 	    expr_string = 'EQ' + '(' + unparse(parsed_expr[1]) + ', ' + unparsed(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1': # ['SUB', expr, prop, expr, equality]
@@ -554,7 +554,7 @@ def find_reduction(parsed_expr):
 			result = ['A', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
 			return result
 		elif parsed_expr[0] == 'L':
-			result = ['L', var, find_reduction(parsed_expr[2])]
+			result = ['L', parsed_expr[1], find_reduction(parsed_expr[2])]
 			return result
 		elif parsed_expr[0] == 'P':
 			result = ['P', find_reduction(parsed_expr[1]), find_reduction(parsed_expr[2])]
@@ -588,7 +588,7 @@ def find_reduction(parsed_expr):
 		else:
 			return parsed_expr
 			
-def normalize(parsed_expr, max_iterations = 100):
+def normalize(parsed_expr, max_iterations = 10):
 	iterations = 1
 	pre_reduced = parsed_expr
 	reduced = find_reduction(parsed_expr)
@@ -597,13 +597,21 @@ def normalize(parsed_expr, max_iterations = 100):
 		pre_reduced = reduced
 		reduced = find_reduction(reduced)
 		iterations += 1
-		print("Iteration:", iterations, "\n current expression:", reduced)
+		print("Iteration:", iterations, "\n current parsed expression:", reduced, "\n unparsed expression: ", unparse(reduced))
 	return reduced
 	
 # This is definitely not the most efficient program possible due to re-scanning and many many other redundancies.
 
 # Test code
 if __name__ == "__main__":
+
+	def run_test(test_string):
+		test_parse = expr.parseString(test_string)
+		print(test_parse)
+		print("Unparsed: ", unparse(test_parse), "Original: ", test_string, unparse(test_parse) == test_string)
+		normalize_result = normalize(test_parse[0].asList())
+		print()
+	
 	print()
 
 	print(expr.parseString('a'))
@@ -666,11 +674,21 @@ if __name__ == "__main__":
 	print()
 	
 	print(expr.parseString('Pi0'))
+	print()
 	
-	test_string = '((Lx.(OUT(x)x))IN(Lx.(OUT(x)x)))'
+	test_string = '(Lx.(OUT(x)x))'
+	run_test(test_string)
+
+	test_string = 'IN(x)'
+	run_test(test_string)
+	
+	test_string = 'IN((Lx.(OUT(x)x)))'
+	run_test(test_string)
+	
+	test_string = '((Lx.(OUT(x)x))IN((Lx.(OUT(x)x))))'
 	test_parse = expr.parseString(test_string)
 	print(test_parse)
-	normalize_result = normalize(test_parse[0].asList())
+	normalize_result = normalize(test_parse[0].asList(), max_iterations = 5)
 	
 	#Does white space matter?
 		#white space ignored by default in pyparser
