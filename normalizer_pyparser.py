@@ -64,6 +64,8 @@ from copy import deepcopy
 									And so I don't have to care about the other ones. 
 									Enforcing "fresh variables". If x is bound in some part of the logical expression, then x's only occur inside that. 
 									The first reduction rule then becomes: If the thing your subbing for doesn't actually occur, then you didn't need to have subbed.
+	Universal reduction should work for any term of the logical language, not just variables. It remains though that I don't understand when this wouldn't be possible.
+		i.e. I can ignore universal in the lambda calculus. If a term doesn't finish reducing, it's not due to universal.
 """
 used_variables = []
 	
@@ -462,27 +464,88 @@ def perform_equality_reduction(parsed_expr):
 		result = ['L', new_variable, outer_sub]
 	# forall
 	elif parsed_prop[0] == 'forall':
-		pass
+		uni_variable = parsed_prop[1].strip('l')
+		inner = [parsed_expr[0], ['A', parsed_expr[1], uni_variable], parsed_prop[2], parsed_expr[3], parsed_equality]
+		result = ['U', uni_variable, inner] 
 	elif parsed_prop[0] == 'in':
 		# t(x) in {z | B(z, x)}
 		if parsed_prop[2][0] == 'set':
-			pass
+			inner = [parsed_expr[0], ['OUT', parsed_expr[1]], replace_subformula(parsed_prop[2][2], parsed_prop[2][1], parsed_prop[1]), parsed_expr[3], parsed_equality]
+			result = ['IN', inner]
 		# t in x 
 			# (x not free in t)
+		elif (parsed_expr[0] == 'SUB0' and not is_subformula_of(parsed_equality[2], parsed_prop[1])) and is_subformula_of(parsed_equality[2], parsed_prop[2]):
+			instantiate_variable = parsed_prop[1]
+			if isinstance(instantiate_variable, str):
+				instantiate_variable = instantiate_variable.strip('l')
+			result = ['A', parsed_expr[3][2], instantiate_variable]			
+		elif (parsed_expr[0] == 'SUB1' and not is_subformula_of(parsed_equality[1], parsed_prop[1])) and is_subformula_of(parsed_equality[1], parsed_prop[2]):
+			instantiate_variable = parsed_prop[1]
+			if isinstance(instantiate_variable, str):
+				instantiate_variable = instantiate_variable.strip('l')
+			result = ['A', parsed_expr[3][1], instantiate_variable]
 		# t(x) in x 
 			# (x free in t)
+		elif (parsed_expr[0] == 'SUB0' and is_subformula_of(parsed_equality[2], parsed_prop[1])) and is_subformula_of(parsed_equality[2], parsed_prop[2]):
+			inner = ['A', parsed_expr[3][2], parsed_prop[1]]
+			new_prop = ['in', parsed_prop[1], parsed_equality[1]]
+			result = [parsed_expr[0], inner, new_prop, parsed_expr[3], parsed_equality]	
+		elif (parsed_expr[0] == 'SUB1' and is_subformula_of(parsed_equality[1], parsed_prop[1])) and is_subformula_of(parsed_equality[1], parsed_prop[2]):
+			inner = ['A', parsed_expr[3][1], parsed_prop[1]]
+			new_prop = ['in', parsed_prop[1], parsed_equality[2]]
+			result = [parsed_expr[0], inner, new_prop, parsed_expr[3], parsed_equality]
 		# t(x) in z
 			# nothing to do in the event of this form
 			# implicit non-normal
+		elif (parsed_expr[0] == 'SUB0' and is_subformula_of(parsed_equality[2], parsed_prop[1])) and not is_subformula_of(parsed_equality[2], parsed_prop[2]):
+			print("Implicit cut, no reduction possible.")
+		elif (parsed_expr[0] == 'SUB1' and is_subformula_of(parsed_equality[1], parsed_prop[1])) and not is_subformula_of(parsed_equality[1], parsed_prop[2]):
+			print("Implicit cut, no reduction possible.")		
 	# t(x) = u(x)
 	elif parsed_prop[0] == '=':
-		pass
+		opposite = ''
+		if parsed_expr[0] == 'SUB0':
+			opposite = 'SUB1'
+			replaced = parsed_equality[2]
+			replacer = parsed_equality[1]
+		elif parsed_expr[0] == 'SUB1':
+			opposite = 'SUB0'
+			replaced = parsed_equality[1]
+			replacer = parsed_equality[2]
+		remaining_variables = set(var_list).difference(set(used_variables))
+		new_variable1 = remaining_variables.pop()
+		used_variables.append(new_variable)	
+		inner_left = [opposite, new_variable1, ['in', 'z', replace_subformula(parsed_prop[1], replaced, replacer), parsed_expr[3], parsed_equality]
+		remaining_variables = set(var_list).difference(set(used_variables))
+		new_variable2 = remaining_variables.pop()
+		used_variables.append(new_variable)			
+		inner_right = [opposite, new_variable2, ['in', 'z', replace_subformula(parsed_prop[2], replaced, replacer), parsed_expr[3], parsed_equality]
+		middle_left = ['SUB1', inner_left, ['in', 'z', parsed_prop[1]], parsed_expr[1], parsed_prop]
+		middle_right = ['SUB0', inner_right, ['in', 'z', parsed_prop[2]], parsed_expr[1], parsed_prop]
+		outer_left = [parsed_expr[0], middle_left, ['in', 'z', parsed_prop[2]], parsed_expr[3], parsed_equality]
+		outer_right = [parsed_expr[0], middle_right, ['in', 'z', parsed_prop[1]], parsed_expr[3], parsed_equality]
+		result = ['EQ', ['U', 'z', ['L', new_variable1, outer_left]], ['U', 'z', ['L', new_variable2, outer_right]]]
 	# vee
 	elif parsed_prop[0] == 'vee':
-		pass
+		remaining_variables = set(var_list).difference(set(used_variables))
+		new_variable1 = remaining_variables.pop()
+		new_variable2 = remaining_variables.pop()
+		used_variables.append(new_variable1)
+		used_variables.append(new_variable2)
+		inner_left = ['I0', [parsed_expr[0], new_variable1, parsed_prop[1], parsed_expr[3], parsed_equality]]
+		inner_right = ['I1', [parsed_expr[0], new_variable2, parsed_prop[2], parsed_expr[3], parsed_equality]]
+		middle = ['DE', new_variable1, inner_left, new_variable2, inner_right]
+		result = ['A', parsed_expr[1], middle]
 	# exists
 	elif parsed_prop[0] == 'exists':
-		pass
+		#Existential intro as EI(m, u) 			['EI', L_var, expr]		
+		#Existential elim as EE((x,s).v)		['EE', L_var, var(?), expr]
+		remaining_variables = set(var_list).difference(set(used_variables))
+		new_variable = remaining_variables.pop()
+		used_variables.append(new_variable)
+		inner = [parsed_expr[0], new_variable, parsed_prop[2], parsed_expr[3], parsed_equality]
+		middle = ['EE', parsed_prop[1], new_variable, inner]
+		result = ['A', parsed_expr[1], middle]
 	return result
 			
 # Traverse the parsed expression and find a reduction
@@ -526,13 +589,17 @@ def find_reduction(parsed_expr):
 		return result
 	elif check_existential_reduction(parsed_expr):
 		#Existential: 	['A', ['EI', L_var, expr], ['EE', L_var, var, expr]]
-		first_var = parsed_expr[2][1]
+		#first_var = parsed_expr[2][1]
+		#primary_expr = parsed_expr[2][3]
+		#first_secondary_expr = parsed_expr[1][1]
+		#second_var = parsed_expr[2][2]
+		#second_secondary_expr = parsed_expr[1][2]
+		#result = substitute(first_var, primary_expr, first_secondary_expr)
+		#result = substitute(second_var, result, second_secondary_expr)
+		var = parsed_expr[2][2]
 		primary_expr = parsed_expr[2][3]
-		first_secondary_expr = parsed_expr[1][1]
-		second_var = parsed_expr[2][2]
-		second_secondary_expr = parsed_expr[1][2]
-		result = substitute(first_var, primary_expr, first_secondary_expr)
-		result = substitute(second_var, result, second_secondary_expr)
+		secondary_expr = parsed_expr[1][2]
+		result = substitute(var, primary_expr, secondary_expr)
 		return result
 	elif check_membership_reduction(parsed_expr):
 		#Membership: 	['OUT', ['IN', expr]]
@@ -540,10 +607,11 @@ def find_reduction(parsed_expr):
 		return result
 	elif check_universal_reduction(parsed_expr):
 		#Universal: 		['A', ['U', _, _], L_var]
-		var = parsed_expr[1][1]
-		primary_expr = parsed_expr[1][2]
-		secondary_expr = parsed_expr[2]
-		result = substitute(var, primary_expr, secondary_expr)		
+		#var = parsed_expr[1][1]
+		#primary_expr = parsed_expr[1][2]
+		#secondary_expr = parsed_expr[2]
+		#result = substitute(var, primary_expr, secondary_expr)		
+		result = parsed_expr[1][2]
 		return result
 	elif check_equality_reduction(parsed_expr): 
 		#Equality: ['SUB', expr, prop, ['EQ', expr, expr], equality]
