@@ -143,7 +143,7 @@ rbrace = Literal('}').suppress()
 pipe = Literal('|').suppress()
 
 def rearrange(x, connective):
-	return x[0].remove(connective).insert(0,connective)
+	return x[0].insert(0,connective)
 
 logical_expr << ( \
 				L_var | \
@@ -154,7 +154,7 @@ logical_expr << ( \
 				# forall x (logical_expr)
 				Group( forall + L_var + lparens + logical_expr + rparens ) | \
 				# (logical_expr in logical_expr)
-				Group( lparens + logical_expr + member + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, 'member')) | \
+				Group( lparens + logical_expr + member + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, 'in')) | \
 				# (logical_expr = logical_expr)
 				Group( lparens + logical_expr + equals + logical_expr + rparens ).setParseAction(lambda x: rearrange(x, '=')) | \
 				# (logical_expr vee logical_expr)
@@ -250,7 +250,9 @@ expr << ( \
 		#IN(u)
 		Group( min + lparens + expr + rparens ) | \
 		#EQ(x1.t1, x2.t2)
-		Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \
+		#Group( eq + lparens + var + dot + expr + comma + var + dot + expr + rparens ) | \
+		#EQ(expr, expr)
+		Group ( eq + lparens + expr + comma + expr + rparens ) | \
 		#SUB(expr : logical_expr , expr : s = r)
 		Group( sub0 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) | \
 		Group( sub1 + lparens + expr + colon + logical_expr + comma + expr + colon + logical_expr + rparens ) 
@@ -285,7 +287,7 @@ def unparse(parsed_expr):
 	elif parsed_expr[0] == 'OUT' or parsed_expr[0] == 'IN': # ['OUT', expr] | ['IN', expr]
 	    expr_string = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ')'
 	elif parsed_expr[0] == 'EQ': # ['EQ', expr, expr]
-	    expr_string = 'EQ' + '(' + unparse(parsed_expr[1]) + ', ' + unparsed(parsed_expr[2]) + ')'
+	    expr_string = 'EQ' + '(' + unparse(parsed_expr[1]) + ', ' + unparse(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1': # ['SUB', expr, prop, expr, equality]
 	    expr_string = parsed_expr[0] + '(' + unparse(parsed_expr[1]) + ':' + unparse_logical(parsed_expr[2]) + ', ' + unparse(parsed_expr[3]) + ':' + unparse_logical(parsed_expr[4]) + ')'
 	return expr_string
@@ -305,21 +307,21 @@ def unparse_logical(parsed_expr):
 	if parsed_expr in L_var_list:
 		expr_string = parsed_expr
 	elif parsed_expr[0] == 'wedge': #['wedge', logical_expr, logical_expr]
-		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'wedge' + unparse_logical(parsed_expr[2]) + ')'
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + ' wedge ' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'rightarrow': #['rightarrow', _, _]
-		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'rightarrow' + unparse_logical(parsed_expr[2]) + ')'	
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + ' rightarrow ' + unparse_logical(parsed_expr[2]) + ')'	
 	elif parsed_expr[0] == 'forall': #['forall', L_var, _]
-		expr_string = 'forall' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
+		expr_string = 'forall ' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'in': #['in', _, _]
-		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'in' + unparse_logical(parsed_expr[2]) + ')'
-	elif parsed_expr[0] == 'equals': #['=', _, _]
-		expr_string = '(' + unparse_logical(parsed_expr[1]) + '=' + unparse_logical(parsed_expr[2]) + ')'
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + ' in ' + unparse_logical(parsed_expr[2]) + ')'
+	elif parsed_expr[0] == '=': #['=', _, _]
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + ' = ' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'vee': #['vee', _, _]
-		expr_string = '(' + unparse_logical(parsed_expr[1]) + 'vee' + unparse_logical(parsed_expr[2]) + ')'
+		expr_string = '(' + unparse_logical(parsed_expr[1]) + ' vee ' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'exists': #['exists', L_var, _]
-		expr_string = 'exists' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
+		expr_string = 'exists ' + parsed_expr[1] + '(' + unparse_logical(parsed_expr[2]) + ')'
 	elif parsed_expr[0] == 'set': #['set', L_var, logical_expr]
-		expr_string = '{' + parsed_expr[1] + '|' + unparse_logical(parsed_expr[2]) + '}'
+		expr_string = '{' + parsed_expr[1] + ' | ' + unparse_logical(parsed_expr[2]) + '}'
 	return expr_string
 
 #print(' '.join(expr.parseString('(ab)').asList()[0]))
@@ -404,7 +406,7 @@ def check_membership_reduction(parsed_expr):
 
 # Equality: ['SUB', expr, prop, ['EQ', expr, expr], equality]				
 def check_equality_reduction(parsed_expr):
-	if (parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1') and parsed_expr[3][1] == 'EQ':
+	if (parsed_expr[0] == 'SUB0' or parsed_expr[0] == 'SUB1') and parsed_expr[3][0] == 'EQ':
 		return True
 	else:
 		return False
@@ -514,12 +516,12 @@ def perform_equality_reduction(parsed_expr):
 			replacer = parsed_equality[2]
 		remaining_variables = set(var_list).difference(set(used_variables))
 		new_variable1 = remaining_variables.pop()
-		used_variables.append(new_variable)	
-		inner_left = [opposite, new_variable1, ['in', 'z', replace_subformula(parsed_prop[1], replaced, replacer), parsed_expr[3], parsed_equality]
+		used_variables.append(new_variable1)	
+		inner_left = [opposite, new_variable1, ['in', 'z', replace_subformula(parsed_prop[1], replaced, replacer)], parsed_expr[3], parsed_equality]
 		remaining_variables = set(var_list).difference(set(used_variables))
 		new_variable2 = remaining_variables.pop()
-		used_variables.append(new_variable)			
-		inner_right = [opposite, new_variable2, ['in', 'z', replace_subformula(parsed_prop[2], replaced, replacer), parsed_expr[3], parsed_equality]
+		used_variables.append(new_variable2)			
+		inner_right = [opposite, new_variable2, ['in', 'z', replace_subformula(parsed_prop[2], replaced, replacer)], parsed_expr[3], parsed_equality]
 		middle_left = ['SUB1', inner_left, ['in', 'z', parsed_prop[1]], parsed_expr[1], parsed_prop]
 		middle_right = ['SUB0', inner_right, ['in', 'z', parsed_prop[2]], parsed_expr[1], parsed_prop]
 		outer_left = [parsed_expr[0], middle_left, ['in', 'z', parsed_prop[2]], parsed_expr[3], parsed_equality]
@@ -676,8 +678,22 @@ if __name__ == "__main__":
 	def run_test(test_string):
 		test_parse = expr.parseString(test_string)
 		print(test_parse)
-		print("Unparsed: ", unparse(test_parse), "Original: ", test_string, unparse(test_parse) == test_string)
+		#print("Unparsed: ", unparse(test_parse), "Original: ", test_string, unparse(test_parse) == test_string)
+		if unparse(test_parse[0].asList()) == test_string:
+			print("Unparsed parsed matches original.")
+		else: 
+			print("Unparse:", unparse(test_parse[0].asList()))
 		normalize_result = normalize(test_parse[0].asList())
+		print("Normal:", unparse(normalize_result))
+		print()
+		
+	def run_logical_test(logical_test_string):
+		logical_test_parse = logical_expr.parseString(logical_test_string)
+		print(logical_test_parse)
+		if (not isinstance(logical_test_parse[0], str)) and unparse_logical(logical_test_parse[0].asList()) == logical_test_string:
+			print("Unparsed parsed matches original.")
+		else: 
+			print("Unparse:", unparse_logical(logical_test_parse[0]))
 		print()
 	
 	print()
@@ -757,6 +773,38 @@ if __name__ == "__main__":
 	test_parse = expr.parseString(test_string)
 	print(test_parse)
 	normalize_result = normalize(test_parse[0].asList(), max_iterations = 5)
+	print()
+	
+
+	# parse_proof_1 = expr.parseString(proof_1)
+	# print(parse_proof_1)
+	# if unparse(parse_proof_1[0].asList()) == proof_1:
+		# print("Unparsed parsed matches original.")
+	# else: 
+		# print("Unparse:", unparse(parse_proof_1))
+	# print()
+	
+	# Proof that {t, t} = {t}
+	proof_1 = 'EQ((La.IN(I0(OUT(a)))), (Lb.(OUT(b)DE(c.IN(c), d.IN(d)))))'	
+	run_test(proof_1)
+
+	run_logical_test('lx')
+	run_logical_test('(la vee la)')
+	run_logical_test('(lx = lx)')	
+	run_logical_test('(lx = lt)')	
+	run_logical_test('{lx | (lx = lt)}')
+	run_logical_test('({lx | (lx = lt)} in {lx | ((lx = {ly | (ly = lt)}) vee (lx = {ly | ((ly = lt) vee (ly = lt))}))})')
+	
+	# Proof that {{t}} = <t, t>
+	proof_2 = 'EQ((La.SUB0(IN(I0(EQ((Lb.b), (Lc.c)))) :\
+				( {lx | (lx = lt)} in {lx | ((lx = {ly | (ly = lt)}) vee (lx = {ly | ((ly = lt) vee (ly = lt))}))} ), \
+				OUT(a) : ( lx = {lx | (lx = lt)} ) ) ), \
+				(Ld.(OUT(d)DE(e.IN(e), f.IN(SUB0(f :\
+				( lx = {lx | ((lx = lt) vee (lx = lt)) } ), ' + \
+				proof_1 + \
+				': ( {lx | (lx = lt) } = {lx | ((lx = lt) vee (lx = lt)) } ) ) ) ) ) ) )'
+	print(proof_2)
+	run_test(proof_2)
 	
 	#Does white space matter?
 		#white space ignored by default in pyparser
